@@ -1,4 +1,5 @@
 import Gallery from '../models/Gallery.js';
+import User from '../models/User.js'; // Make sure to import the User model
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -77,11 +78,24 @@ export const getGalleries = async (req, res) => {
 // Get Single Gallery
 export const getGallery = async (req, res) => {
   try {
-    const gallery = await Gallery.findByPk(req.params.id);
+    const gallery = await Gallery.findByPk(req.params.id, {
+      include: [{
+        model: User,
+        attributes: ['username'] // Only include the username
+      }]
+    });
+
     if (!gallery) {
       return res.status(404).json({ message: 'Gallery not found' });
     }
-    res.status(200).json(gallery);
+
+    // Transform the gallery object to include username
+    const galleryWithUsername = {
+      ...gallery.toJSON(), // Convert Sequelize instance to plain object
+      username: gallery.User ? gallery.User.username : null
+    };
+
+    res.status(200).json(galleryWithUsername);
   } catch (error) {
     res.status(400).json({ message: 'Error fetching gallery', error });
   }

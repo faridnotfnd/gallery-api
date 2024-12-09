@@ -2,9 +2,10 @@ import cors from 'cors';
 import express from 'express';
 import sequelize from './config/database.js';
 import authRoutes from './routes/auth.js';
-import path from 'path';
 import galleryRoutes from './routes/gallery.js';
 import commentRoutes from './routes/comment.js';
+import albumRoutes from "./routes/albumRoutes.js";
+import likeRoutes from './routes/likeRoutes.js'; // Impor likeRoutes
 import adminRoutes from './routes/adminRoutes.js';
 import dotenv from 'dotenv';
 
@@ -29,8 +30,10 @@ app.use('/admin', adminRoutes);
 
 // Rute
 app.use('/api/auth', authRoutes);
+app.use('/api/albums', albumRoutes);
 app.use('/api/galleries', galleryRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/likes', likeRoutes);
 
 // Sinkronisasi dan jalankan server
 sequelize.sync().then(() => {

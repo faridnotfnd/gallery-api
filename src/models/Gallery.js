@@ -1,3 +1,4 @@
+import User from './User.js';
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js'; // Sesuaikan path jika perlu
 
@@ -21,6 +22,9 @@ const Gallery = sequelize.define('Gallery', {
 }, {
   underscored: true, // Jika Anda menggunakan nama kolom dengan garis bawah
 });
+
+Gallery.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(Gallery, { foreignKey: 'user_id' });
 
 // Ekspor model
 export default Gallery;
