@@ -10,10 +10,6 @@ const Album = sequelize.define('Album', {
   },
   user_id: {
     type: DataTypes.INTEGER,
-    references: {
-      model: User,
-      key: 'id', // Menghubungkan ke kolom 'id' di model User
-    },
     allowNull: false,
   },
   title: {

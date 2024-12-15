@@ -1,4 +1,5 @@
 import Comment from '../models/Comment.js';
+import User from '../models/User.js'; // Pastikan model User diimport
 
 export const addComment = async (req, res) => {
   try {
@@ -17,7 +18,15 @@ export const addComment = async (req, res) => {
 
 export const getComments = async (req, res) => {
   try {
-    const comments = await Comment.findAll({ where: { gallery_id: req.params.galleryId } });
+    const comments = await Comment.findAll({
+      where: { gallery_id: req.params.galleryId },
+      include: [
+        {
+          model: User,
+          attributes: ['username'], // Hanya ambil atribut username
+        },
+      ],
+    });
     res.json(comments);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching comments', error });

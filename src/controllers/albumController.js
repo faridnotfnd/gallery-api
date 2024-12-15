@@ -5,6 +5,12 @@ import User from "../models/User.js";
 export const createAlbum = async (req, res) => {
   try {
     const { title, description, user_id } = req.body;
+
+    // Validasi input
+    if (!title || !user_id) {
+      return res.status(400).json({ error: "Title dan user_id wajib diisi." });
+    }
+
     const album = await Album.create({ title, description, user_id });
     res.status(201).json(album);
   } catch (error) {

@@ -125,7 +125,7 @@ export const updateGallery = async (req, res) => {
     await gallery.save();
     res.status(200).json({ message: 'Gallery updated successfully', gallery });
   } catch (error) {
-    res.status(400).json({ message: 'Error updating gallery', error });
+    res.status(400).json({ message: 'Error updating gallery', error }); 
   }
 };
 
