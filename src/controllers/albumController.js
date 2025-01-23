@@ -1,61 +1,126 @@
 import Album from "../models/Album.js";
 import User from "../models/User.js";
-
-// Fungsi untuk membuat album baru
-export const createAlbum = async (req, res) => {
+import Photo from "../models/Gallery.js"; // Pastikan model Photo sudah ada
+// Mendapatkan album berdasarkan ID pengguna
+export const getAlbumsByUser = async (req, res) => {
   try {
-    const { title, description, user_id } = req.body;
+    const { userId } = req.params;
+    const albums = await Album.findAll({
+      where: { user_id: userId },
+      include: [{ model: Photo, as: "photos" }], // Pastikan relasi photos ada
+    });
 
-    // Validasi input
-    if (!title || !user_id) {
-      return res.status(400).json({ error: "Title dan user_id wajib diisi." });
-    }
-
-    const album = await Album.create({ title, description, user_id });
-    res.status(201).json(album);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Fungsi untuk mendapatkan semua album
-export const getAllAlbums = async (req, res) => {
-  try {
-    const albums = await Album.findAll();
     res.json(albums);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Fungsi untuk mengupdate album
-export const updateAlbum = async (req, res) => {
+// Membuat album baru
+export const createAlbum = async (req, res) => {
   try {
-    const { id } = req.params;
     const { title, description, user_id } = req.body;
 
-    // Validasi apakah user_id ada
-    const user = await User.findByPk(user_id);
-    if (!user) {
-      return res.status(404).json({ error: "User tidak ditemukan" });
+    // Validasi input
+    if (!title || title.trim().length < 3) {
+      return res.status(400).json({
+        error: "Judul album wajib diisi dan minimal 3 karakter.",
+      });
     }
 
-    const album = await Album.findByPk(id);
-    if (!album) return res.status(404).json({ error: "Album tidak ditemukan" });
+    if (!user_id) {
+      return res.status(400).json({
+        error: "User ID wajib diisi.",
+      });
+    }
 
-    await album.update({ title, description, user_id });
-    res.json(album);
+    // Validasi keberadaan pengguna
+    const user = await User.findByPk(user_id);
+    if (!user) {
+      return res.status(404).json({
+        error: "Pengguna dengan ID tersebut tidak ditemukan.",
+      });
+    }
+
+    // Membuat album baru
+    const album = await Album.create({
+      title: title.trim(),
+      description: description?.trim() || null,
+      user_id: parseInt(user_id, 10),
+    });
+
+    // Ambil data album dengan include User
+    const albumWithUser = await Album.findByPk(album.album_id, {
+      include: [
+        { model: User },
+        { model: Gallery, as: "photos" }
+      ]
+    });
+
+    res.status(201).json({
+      message: "Album berhasil dibuat.",
+      album: albumWithUser
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Terjadi kesalahan saat membuat album.",
+      details: error.message,
+    });
+  }
+};
+
+// Mendapatkan semua album
+export const getAllAlbums = async (req, res) => {
+  try {
+    const albums = await Album.findAll({
+      include: [{ model: Photo, as: "photos" }], // Pastikan relasi photos ada
+    });
+    res.json(albums);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Fungsi untuk menghapus album
+// Mengupdate album
+export const updateAlbum = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, user_id } = req.body;
+
+    const album = await Album.findByPk(id);
+    if (!album) {
+      return res.status(404).json({ error: "Album tidak ditemukan" });
+    }
+
+    // Validasi user_id
+    if (user_id) {
+      const user = await User.findByPk(user_id);
+      if (!user) {
+        return res.status(404).json({ error: "User tidak ditemukan" });
+      }
+    }
+
+    await album.update({
+      title: title?.trim() || album.title,
+      description: description?.trim() || album.description,
+      user_id: user_id || album.user_id,
+    });
+
+    res.json({ message: "Album berhasil diperbarui", album });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Menghapus album
 export const deleteAlbum = async (req, res) => {
   try {
     const { id } = req.params;
+
     const album = await Album.findByPk(id);
-    if (!album) return res.status(404).json({ error: "Album tidak ditemukan" });
+    if (!album) {
+      return res.status(404).json({ error: "Album tidak ditemukan" });
+    }
 
     await album.destroy();
     res.json({ message: "Album berhasil dihapus" });
