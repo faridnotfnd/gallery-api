@@ -19,6 +19,14 @@ const Gallery = sequelize.define('Gallery', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  album_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Albums',
+      key: 'album_id'
+    }
+  }
 }, {
   underscored: true, // Jika Anda menggunakan nama kolom dengan garis bawah
 });

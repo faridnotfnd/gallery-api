@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js"; // Sesuaikan path jika perlu
 import User from "./User.js"; // Import model User untuk relasi
+import Gallery from "./Gallery.js";
 
 const Album = sequelize.define(
   "Album",
@@ -32,4 +33,11 @@ const Album = sequelize.define(
 
 // Membuat relasi antara Album dan User
 Album.belongsTo(User, { foreignKey: "user_id" });
+Album.hasMany(Gallery, {
+  foreignKey: 'album_id',
+  as: 'photos'
+});
+Gallery.belongsTo(Album, {
+  foreignKey: 'album_id'
+});
 export default Album;

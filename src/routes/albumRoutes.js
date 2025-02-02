@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  getAlbumsByUser,
   getAllAlbums,
   createAlbum,
   updateAlbum,
@@ -7,6 +8,8 @@ import {
 } from "../controllers/albumController.js"; // Import controller
 
 const router = express.Router();
+
+router.get("/user/:userId", getAlbumsByUser);
 
 // Get all albums
 router.get("/", getAllAlbums);

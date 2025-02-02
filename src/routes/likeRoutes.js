@@ -18,7 +18,7 @@ router.delete("/:gallery_id", removeLike);
 router.get("/count/:gallery_id", getLikeCount);
 
 // Mengecek apakah user telah memberikan like
-router.get("/user/:gallery_id", checkUserLike);
+router.post("/user/:gallery_id", checkUserLike);
 
 
 export default router;
