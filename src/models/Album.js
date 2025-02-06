@@ -1,7 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js"; // Sesuaikan path jika perlu
 import User from "./User.js"; // Import model User untuk relasi
-import Gallery from "./Gallery.js";
 
 const Album = sequelize.define(
   "Album",
@@ -23,6 +22,10 @@ const Album = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true, // Deskripsi boleh kosong
     },
+    cover_photo: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },    
   },
   {
     underscored: true, // Menyusun kolom dengan garis bawah (contoh: created_at)
@@ -33,11 +36,5 @@ const Album = sequelize.define(
 
 // Membuat relasi antara Album dan User
 Album.belongsTo(User, { foreignKey: "user_id" });
-Album.hasMany(Gallery, {
-  foreignKey: 'album_id',
-  as: 'photos'
-});
-Gallery.belongsTo(Album, {
-  foreignKey: 'album_id'
-});
+
 export default Album;

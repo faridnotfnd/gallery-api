@@ -1,3 +1,4 @@
+import "./models/associations.js"; // Ini akan memastikan relasi dimuat lebih dulu
 import cors from 'cors';
 import express from 'express';
 import sequelize from './config/database.js';
@@ -22,7 +23,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
+app.use(express.urlencoded({ extended: true }));
 // Menyediakan folder 'uploads' untuk file gambar
 app.use('/uploads', express.static('uploads'));
 

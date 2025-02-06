@@ -29,6 +29,7 @@ const Gallery = sequelize.define('Gallery', {
   }
 }, {
   underscored: true, // Jika Anda menggunakan nama kolom dengan garis bawah
+  timestamps: true,
 });
 
 Gallery.belongsTo(User, { foreignKey: 'user_id' });

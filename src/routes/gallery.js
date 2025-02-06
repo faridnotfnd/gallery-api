@@ -13,7 +13,7 @@ router.get('/my-galleries', authMiddleware, getGalleries);
 router.get('/', getAllGalleries);
 
 // Dapatkan galeri berdasarkan ID
-router.get('/:id', getGallery);
+router.get('/:id', getGallery,);
 
 // Update galeri berdasarkan ID
 router.put('/:id', authMiddleware, upload.single('image'), updateGallery);
