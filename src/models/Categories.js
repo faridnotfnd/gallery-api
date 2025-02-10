@@ -10,7 +10,7 @@ const Category = sequelize.define(
       autoIncrement: true, // ID bertambah otomatis
     },
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING, 
       allowNull: false, // Nama kategori wajib diisi
     },
     description: {

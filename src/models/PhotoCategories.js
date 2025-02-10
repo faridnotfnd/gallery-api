@@ -1,7 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
-import Photo from "./Gallery.js"; // Pastikan path benar untuk model Photo/Gallery
-import Category from "./Category.js";
+import Gallery from "./Gallery.js"; // Model Gallery
+import Category from "./Category.js"; // Model Category
 
 const PhotoCategory = sequelize.define(
   "PhotoCategory",
@@ -11,11 +11,11 @@ const PhotoCategory = sequelize.define(
       primaryKey: true,
       autoIncrement: true, // ID bertambah otomatis
     },
-    photo_id: {
+    galleries_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: Photo, // Model foto
+        model: Gallery, // Model Gallery (sebelumnya Photo)
         key: "id",
       },
       onDelete: "CASCADE",
@@ -33,13 +33,13 @@ const PhotoCategory = sequelize.define(
     },
   },
   {
+    tableName: "gallery_db_Photo_categories", // Sesuai dengan gambar
     timestamps: true,
     createdAt: "created_at",
-    updatedAt: "updated_at",
   }
 );
 
-PhotoCategory.belongsTo(Photo, { foreignKey: "photo_id" });
+PhotoCategory.belongsTo(Gallery, { foreignKey: "galleries_id" });
 PhotoCategory.belongsTo(Category, { foreignKey: "category_id" });
 
 export default PhotoCategory;
