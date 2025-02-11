@@ -1,5 +1,6 @@
 import Gallery from '../models/Gallery.js';
 import User from '../models/User.js'; // Make sure to import the User model
+import Like from "../models/Like.js"; // Pastikan Like di-import
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -191,22 +192,27 @@ export const deleteGallery = async (req, res) => {
   try {
     const gallery = await Gallery.findByPk(req.params.id);
     if (!gallery) {
-      return res.status(404).json({ message: 'Gallery not found' });
+      return res.status(404).json({ message: "Gallery not found" });
     }
 
+    // Hapus semua like terkait gallery ini sebelum menghapus gallery
+    await Like.destroy({ where: { gallery_id: gallery.id } });
+
     // Hapus file gambar dari sistem file
-    const imagePath = path.join('uploads', path.basename(gallery.image_url));
-    if (fs.existsSync(imagePath)) { // Periksa jika file ada sebelum menghapus
+    const imagePath = path.join("uploads", path.basename(gallery.image_url));
+    if (fs.existsSync(imagePath)) {
       fs.unlinkSync(imagePath);
     }
 
+    // Hapus gallery setelah like dihapus
     await gallery.destroy();
-    res.status(200).json({ message: 'Gallery deleted successfully' });
+
+    res.status(200).json({ message: "Gallery deleted successfully" });
   } catch (error) {
-    res.status(400).json({ message: 'Error deleting gallery', error });
+    console.error("Error deleting gallery:", error);
+    res.status(400).json({ message: "Error deleting gallery", error });
   }
 };
-
 
 // Export multer upload untuk digunakan di route
 export { upload };
