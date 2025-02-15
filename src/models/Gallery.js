@@ -19,6 +19,14 @@ const Gallery = sequelize.define('Gallery', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  category_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Categories',
+      key: 'category_id'
+    }
+  },
   album_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
