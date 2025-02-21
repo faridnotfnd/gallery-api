@@ -90,7 +90,6 @@ export const getAlbumById = async (req, res) => {
 // Membuat album baru
 export const uploadMiddleware = upload.array("photos", 10); // Maksimal 10 foto
 
-// Controller untuk membuat album baru dengan multiple photos
 // Controller untuk membuat album baru dengan atau tanpa foto
 export const createAlbum = async (req, res) => {
   try {
@@ -135,22 +134,18 @@ export const createAlbum = async (req, res) => {
       return res.status(404).json({ error: "Pengguna tidak ditemukan." });
     }
 
-    // Buat album baru (bisa tanpa foto)
-    const cover_photo = req.files && req.files.length > 0 
-      ? `uploads/${req.files[0].filename}` 
-      : null;
-      
     // Pastikan data yang dikirim ke database sudah bersih
     const cleanTitle = typeof title === "string" ? title.trim() : String(title);
     const cleanDescription = description && typeof description === "string" 
       ? description.trim() 
       : null;
 
+    // Buat album tanpa cover_photo (kolom ini tidak lagi digunakan)
     const album = await Album.create({
       title: cleanTitle,
       description: cleanDescription,
       user_id: userIdInt,
-      cover_photo: cover_photo,
+      // Menghilangkan penggunaan cover_photo 
     });
     
     console.log("Album created successfully:", album.album_id);
@@ -208,29 +203,28 @@ export const addPhotosToAlbum = async (req, res) => {
       return res.status(400).json({ error: "Minimal satu foto harus diunggah." });
     }
 
-    // Validasi data gambar
-    const photosData = req.body.photos;
-    if (!photosData) {
-      return res.status(400).json({ error: "Data foto tidak ditemukan." });
-    }
-
+    // Simpan foto-foto ke Gallery
     let photoDetails;
-    try {
-      photoDetails = JSON.parse(photosData);
-    } catch (error) {
-      return res.status(400).json({ error: "Format data foto tidak valid." });
-    }
-
-    if (!Array.isArray(photoDetails) || photoDetails.length !== req.files.length) {
-      return res.status(400).json({ 
-        error: "Jumlah detail foto harus sama dengan jumlah file yang diunggah." 
-      });
+    
+    // Cek apakah ada data photo details atau tidak
+    if (req.body.photos) {
+      try {
+        photoDetails = JSON.parse(req.body.photos);
+        
+        if (!Array.isArray(photoDetails) || photoDetails.length !== req.files.length) {
+          photoDetails = req.files.map(() => ({ title: "Untitled" }));
+        }
+      } catch (error) {
+        photoDetails = req.files.map(() => ({ title: "Untitled" }));
+      }
+    } else {
+      photoDetails = req.files.map(() => ({ title: "Untitled" }));
     }
 
     // Simpan foto-foto ke Gallery
     const photos = await Promise.all(
       req.files.map(async (file, index) => {
-        const photoData = photoDetails[index];
+        const photoData = photoDetails[index] || { title: "Untitled" };
         
         // Buat entry di Gallery
         const gallery = await Gallery.create({
@@ -295,8 +289,7 @@ export const addPhotosToAlbum = async (req, res) => {
   }
 };
 
-
-// Mendapatkan semua album
+// Mengupdate getAllAlbums untuk menghapus referensi ke cover_photo
 export const getAllAlbums = async (req, res) => {
   try {
     const albums = await Album.findAll({
@@ -324,11 +317,11 @@ export const getAllAlbums = async (req, res) => {
   }
 };
 
-// Mengupdate album
+// Mengupdate updateAlbum untuk menghapus referensi ke cover_photo
 export const updateAlbum = async (req, res) => {
   try {
     const { albumId } = req.params;
-    const { title, description, user_id } = req.body;
+    const { title, description, user_id, photos } = req.body;
 
     // Cari album yang akan diupdate
     const album = await Album.findByPk(albumId, {
@@ -346,17 +339,15 @@ export const updateAlbum = async (req, res) => {
       });
     }
 
-    // Persiapkan data update
+    // Persiapkan data update untuk album
     const updateData = {};
     
-    // Bersihkan dan validasi data
+    // Bersihkan dan validasi data album
     if (title !== undefined) {
-      // Hapus tanda kutip yang tidak diinginkan dan trim whitespace
       updateData.title = title.replace(/['"\\]/g, '').trim();
     }
     
     if (description !== undefined) {
-      // Hapus tanda kutip yang tidak diinginkan dan trim whitespace
       updateData.description = description.replace(/['"\\]/g, '').trim();
     }
     
@@ -371,15 +362,36 @@ export const updateAlbum = async (req, res) => {
       updateData.user_id = parseInt(user_id, 10);
     }
 
-    // Lakukan update
+    // Update data album
     await album.update(updateData);
+
+    // Update foto-foto jika ada
+    if (photos && Array.isArray(photos)) {
+      for (const photo of photos) {
+        if (photo.id) {
+          // Update foto yang sudah ada
+          await Gallery.update(
+            {
+              title: photo.title?.replace(/['"\\]/g, '').trim(),
+              description: photo.description?.replace(/['"\\]/g, '').trim()
+            },
+            {
+              where: {
+                id: photo.id,
+                album_id: albumId
+              }
+            }
+          );
+        }
+      }
+    }
 
     // Ambil data terbaru setelah update
     const updatedAlbum = await Album.findByPk(albumId, {
       include: [{ 
         model: Gallery,
         as: "photos",
-        attributes: ['id', 'title', 'image_url'] 
+        attributes: ['id', 'title', 'image_url', 'description'] 
       }]
     });
 
@@ -396,7 +408,7 @@ export const updateAlbum = async (req, res) => {
       details: error.message 
     });
   }
-};
+}
 
 // Menghapus album
 export const deleteAlbum = async (req, res) => {
