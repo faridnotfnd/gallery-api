@@ -8,8 +8,6 @@ import commentRoutes from './routes/comment.js';
 import albumRoutes from "./routes/albumRoutes.js";
 import likeRoutes from './routes/likeRoutes.js'; // Impor likeRoutes
 import adminRoutes from './routes/adminRoutes.js';
-import categoryRoutes from './routes/Category.js';
-// import photoCategoryRoutes from './routes/PhotoCategoryRoutes.js';
 import dotenv from 'dotenv';
 
 
@@ -37,8 +35,6 @@ app.use('/api/albums', albumRoutes);
 app.use('/api/galleries', galleryRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/likes', likeRoutes);
-app.use('/api/categories', categoryRoutes);
-// app.use('/api/photo-categories', photoCategoryRoutes);
 
 // Sinkronisasi dan jalankan server
 sequelize.sync().then(() => {
