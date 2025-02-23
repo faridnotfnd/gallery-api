@@ -1,11 +1,10 @@
 import User from "../models/User.js"; // Make sure to import the User model
 import Like from "../models/Like.js"; // Pastikan Like di-import
 import { Gallery, Category, GalleryCategory } from "../models/index.js";
+import cache from "../config/cache.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { compressImage } from "./imageCompression.js";
-import { Sequelize } from "sequelize"; // Tambahkan ini di bagian atas
 
 // Konfigurasi penyimpanan untuk gambar yang di-upload
 const storage = multer.diskStorage({
@@ -41,75 +40,73 @@ export const createGallery = async (req, res) => {
       return res.status(400).json({ message: "Please upload an image" });
     }
 
-    const { title, description, compress, categories } = req.body;
-    let image_url =
-      compress === "true"
-        ? (await compressImage(req.file)).path
-        : req.file.path;
+    const { title, description } = req.body;
+    let image_url = req.file.path;
 
-    // Pastikan categories adalah array
-    if (!categories || !Array.isArray(categories) || categories.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Categories must be a non-empty array" });
+    let categories = req.body.categories;
+    if (typeof categories === "string") {
+      categories = [categories];
     }
 
-    // Buat galeri baru
+    if (!categories || !Array.isArray(categories) || categories.length === 0) {
+      return res.status(400).json({ message: "Categories must be provided" });
+    }
+
     const gallery = await Gallery.create({
       title,
-      description,
+      description: description || "",
       image_url,
       user_id: req.user.id,
     });
 
-    // Proses kategori secara paralel untuk efisiensi
-    const categoryInstances = await Promise.all(
-      categories.map(async (categoryName) => {
-        let category = await Category.findOne({
-          where: { name: categoryName },
+    const categoryPromises = categories.map(async (categoryName) => {
+      try {
+        const [category] = await Category.findOrCreate({
+          where: { name: categoryName.trim() },
+          defaults: {
+            description: `Category for ${categoryName.trim()}`,
+          },
         });
 
-        if (!category) {
-          category = await Category.create({
-            name: categoryName,
-            description: `Category for ${categoryName}`,
-          });
-        }
-
-        return category;
-      })
-    );
-
-    // Tambahkan ke tabel pivot GalleryCategory
-    await Promise.all(
-      categoryInstances.map((category) =>
-        GalleryCategory.create({
+        await GalleryCategory.create({
           gallery_id: gallery.id,
           category_id: category.category_id,
-        })
-      )
-    );
+        });
 
-    // Ambil galeri dengan daftar kategori terkait
+        return category;
+      } catch (error) {
+        console.error(`Error processing category ${categoryName}:`, error);
+        throw error;
+      }
+    });
+
+    await Promise.all(categoryPromises);
+
     const galleryWithCategories = await Gallery.findByPk(gallery.id, {
       include: [
         {
           model: Category,
           as: "categories",
           attributes: ["category_id", "name"],
+          through: { attributes: [] },
         },
       ],
     });
 
-    res.status(201).json({
+    // Hapus cache halaman pertama karena ada data baru
+    cache.del("galleries_page1_limit12");
+
+    // Kirim satu response saja
+    return res.status(201).json({
       message: "Gallery created successfully",
       gallery: galleryWithCategories,
     });
+
   } catch (error) {
     console.error("Error in createGallery:", error);
-    res.status(500).json({
-      message: "Error creating gallery",
-      error: error.message,
+    return res.status(400).json({ 
+      message: "Error creating gallery", 
+      error: error.message 
     });
   }
 };
@@ -117,37 +114,42 @@ export const createGallery = async (req, res) => {
 export const getAllGalleries = async (req, res) => {
   try {
     let { page, limit } = req.query;
+    // Pastikan page dan limit adalah angka valid
     page = Math.max(1, parseInt(page) || 1);
-    limit = Math.min(50, Math.max(1, parseInt(limit) || 12));
+    limit = Math.min(50, Math.max(1, parseInt(limit) || 15));
 
     const offset = (page - 1) * limit;
 
     const { count, rows } = await Gallery.findAndCountAll({
       offset,
       limit,
-      order: [["createdAt", "DESC"]], // Gunakan urutan berdasarkan waktu upload, bukan acak!
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: Category,
           as: "categories",
           attributes: ["category_id", "name"],
+          through: { attributes: [] }, // Tambahkan ini
         },
       ],
     });
 
-    res.status(200).json({
+    const result = {
       galleries: rows,
       total: count,
       currentPage: page,
       totalPages: Math.ceil(count / limit),
       itemsPerPage: limit,
-      offset: offset,
-    });
+    };
+
+    return res.status(200).json(result);
+
   } catch (error) {
     console.error("Error in getAllGalleries:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching galleries", error: error.message });
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message 
+    });
   }
 };
 
@@ -165,6 +167,13 @@ export const getGalleries = async (req, res) => {
 // Get Single Gallery
 export const getGallery = async (req, res) => {
   try {
+    const cacheKey = `gallery_${req.params.id}`; // Definisikan cacheKey
+
+    const cachedGallery = cache.get(cacheKey);
+    if (cachedGallery) {
+      return res.status(200).json(cachedGallery);
+    }
+
     const gallery = await Gallery.findByPk(req.params.id, {
       include: [
         { model: User, attributes: ["id", "username"] },
@@ -181,25 +190,25 @@ export const getGallery = async (req, res) => {
       return res.status(404).json({ message: "Gallery not found" });
     }
 
-    // Transform the gallery object to include user data
     const galleryWithUser = {
       id: gallery.id,
       title: gallery.title,
       description: gallery.description,
       image_url: gallery.image_url,
-      user_id: gallery.User ? gallery.User.id : null, // Pastikan user_id ada
+      user_id: gallery.User ? gallery.User.id : null,
       username: gallery.User ? gallery.User.username : null,
       categories: gallery.categories || [],
       createdAt: gallery.createdAt,
       updatedAt: gallery.updatedAt,
     };
 
+    // Sekarang menggunakan galleryWithUser yang sudah didefinisikan
+    cache.set(cacheKey, galleryWithUser);
+
     res.status(200).json(galleryWithUser);
   } catch (error) {
     console.error("Error in getGallery:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching gallery", error: error.message });
+    res.status(500).json({ message: "Error fetching gallery", error: error.message });
   }
 };
 
@@ -233,6 +242,10 @@ export const updateGallery = async (req, res) => {
           });
         }
 
+        // Hapus cache untuk gallery yang diupdate
+        cache.del(`gallery_${req.params.id}`);
+        cache.del("galleries_page1_limit12");
+
         await GalleryCategory.create({
           gallery_id: gallery.id,
           category_id: category.category_id,
@@ -262,6 +275,10 @@ export const deleteGallery = async (req, res) => {
     if (fs.existsSync(imagePath)) {
       fs.unlinkSync(imagePath);
     }
+
+    // Hapus cache untuk gallery yang dihapus
+    cache.del(`gallery_${req.params.id}`);
+    cache.del("galleries_page1_limit12");
 
     // Hapus gallery setelah like dihapus
     await gallery.destroy();

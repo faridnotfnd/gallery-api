@@ -64,7 +64,7 @@ export const getAlbumById = async (req, res) => {
         {
           model: Gallery,
           as: "photos",
-          attributes: ["id", "title", "image_url"] // Menggunakan kolom yang benar
+          attributes: ["id", "title", "image_url"], // Menggunakan kolom yang benar
         },
       ],
     });
@@ -77,13 +77,13 @@ export const getAlbumById = async (req, res) => {
 
     res.json({
       message: "Album berhasil ditemukan",
-      data: album
+      data: album,
     });
   } catch (error) {
     console.error("Error fetching album:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Terjadi kesalahan saat mengambil data album",
-      details: error.message 
+      details: error.message,
     });
   }
 };
@@ -94,28 +94,24 @@ export const uploadMiddleware = upload.array("photos", 10); // Maksimal 10 foto
 export const createAlbum = async (req, res) => {
   try {
     console.log("=== DEBUG INFO ===");
-    console.log("Request body (raw):", req.body);
+    console.log("Request body:", req.body);
     console.log("Files received:", req.files);
-    
-    // Ekstrak data dengan aman dari form-data
-    // Form-data bisa menjadikan fields sebagai array jika memiliki nama yang sama
-    const extractField = (fieldName) => {
-      const value = req.body[fieldName];
-      if (Array.isArray(value)) return value[0];
-      return value;
-    };
-    
-    const title = extractField('title');
-    const description = extractField('description');
-    const user_id = extractField('user_id');
-    
-    console.log("Extracted data:");
-    console.log("- title:", title, "type:", typeof title);
-    console.log("- description:", description);
-    console.log("- user_id:", user_id);
 
-    // Validasi input
-    if (!title || (typeof title === "string" && title.trim().length === 0)) {
+    const title = req.body.title?.trim();
+    const description = req.body.description?.trim() || "";
+    const user_id = req.body.user_id;
+    let photos_metadata = [];
+
+    if (req.body.photos_metadata) {
+      try {
+        photos_metadata = JSON.parse(req.body.photos_metadata);
+      } catch (error) {
+        console.error("Error parsing photos_metadata:", error);
+        photos_metadata = [];
+      }
+    }
+
+    if (!title) {
       return res.status(400).json({ error: "Judul album wajib diisi." });
     }
 
@@ -123,61 +119,99 @@ export const createAlbum = async (req, res) => {
       return res.status(400).json({ error: "User ID wajib diisi." });
     }
 
-    // Validasi user
     const userIdInt = parseInt(user_id, 10);
     if (isNaN(userIdInt)) {
       return res.status(400).json({ error: "User ID harus berupa angka." });
     }
-    
+
     const user = await User.findByPk(userIdInt);
     if (!user) {
       return res.status(404).json({ error: "Pengguna tidak ditemukan." });
     }
 
-    // Pastikan data yang dikirim ke database sudah bersih
-    const cleanTitle = typeof title === "string" ? title.trim() : String(title);
-    const cleanDescription = description && typeof description === "string" 
-      ? description.trim() 
-      : null;
-
-    // Buat album tanpa cover_photo (kolom ini tidak lagi digunakan)
     const album = await Album.create({
-      title: cleanTitle,
-      description: cleanDescription,
+      title,
+      description,
       user_id: userIdInt,
-      // Menghilangkan penggunaan cover_photo 
     });
-    
-    console.log("Album created successfully:", album.album_id);
-    
-    // Simpan foto-foto ke Gallery jika ada foto yang diunggah
+
     if (req.files && req.files.length > 0) {
-      await Promise.all(
-        req.files.map((file) =>
-          Gallery.create({
-            title: cleanTitle, // Menggunakan judul album untuk semua foto
-            image_url: `uploads/${file.filename}`,
-            user_id: userIdInt,
-            album_id: album.album_id,
-          })
-        )
-      );
-      console.log(`Added ${req.files.length} photos to gallery`);
+      const galleryPromises = req.files.map(async (file, index) => {
+        const photoMeta = photos_metadata[index] || {};
+        // Ambil kategori dari metadata foto, bukan dari req.body
+        const categories = photoMeta.categories || [];
+    
+        try {
+          // Buat foto di Gallery
+          const gallery = await Gallery.create({
+            title: photoMeta.title || "Untitled",
+            description: photoMeta.description || null,
+            image_url: file.path,
+            user_id: album.user_id,
+            album_id: albumId,
+          });
+    
+          // Proses kategori untuk setiap foto
+          if (categories.length > 0) {
+            const categoryPromises = categories.map(async (categoryName) => {
+              const [category] = await Category.findOrCreate({
+                where: { name: categoryName.trim() },
+                defaults: {
+                  description: `Category for ${categoryName.trim()}`
+                }
+              });
+    
+              await GalleryCategory.create({
+                gallery_id: gallery.id,
+                category_id: category.id
+              });
+            });
+    
+            await Promise.all(categoryPromises);
+          }
+    
+          return gallery;
+        } catch (error) {
+          console.error(`Error processing file ${file.originalname}:`, error);
+          return null;
+        }
+      });
+    
+      await Promise.all(galleryPromises);
+    }
+    let galleryPhotosData = [];
+    if (req.body.gallery_photos) {
+      try {
+        galleryPhotosData = JSON.parse(req.body.gallery_photos);
+
+        for (const galleryPhoto of galleryPhotosData) {
+          const originalGallery = await Gallery.findByPk(
+            galleryPhoto.gallery_id
+          );
+          if (originalGallery) {
+            await originalGallery.update({
+              album_id: album.album_id,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error processing gallery photos:", error);
+      }
     }
 
-    // Ambil data album beserta relasinya
-    const albumWithPhotos = await Album.findByPk(album.album_id, {
+    const createdAlbum = await Album.findByPk(album.album_id, {
       include: [
         {
           model: Gallery,
           as: "photos",
+          attributes: ["id", "title", "image_url", "description"],
         },
       ],
     });
 
     res.status(201).json({
       message: "Album berhasil dibuat",
-      data: albumWithPhotos,
+      data: createdAlbum,
     });
   } catch (error) {
     console.error("Error creating album:", error);
@@ -187,91 +221,127 @@ export const createAlbum = async (req, res) => {
     });
   }
 };
+
 // Controller untuk menambah foto ke album yang sudah ada
 export const addPhotosToAlbum = async (req, res) => {
   try {
+    console.log("=== DEBUG INFO ===");
+    console.log("Request body:", req.body);
+    console.log("Files received:", req.files);
+
     const { albumId } = req.params;
-    
+    let photos_metadata = [];
+
+    // Parse metadata foto termasuk kategori
+    if (req.body.photos_metadata) {
+      try {
+        photos_metadata = JSON.parse(req.body.photos_metadata);
+        console.log("Parsed photos_metadata:", photos_metadata); // Debug log
+      } catch (error) {
+        console.error("Error parsing photos_metadata:", error);
+        photos_metadata = [];
+      }
+    }
+
     // Validasi album
     const album = await Album.findByPk(albumId);
     if (!album) {
       return res.status(404).json({ error: "Album tidak ditemukan." });
     }
 
-    // Validasi files
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: "Minimal satu foto harus diunggah." });
-    }
+    // Handle foto dari perangkat
+// Handle foto dari perangkat
+if (req.files && req.files.length > 0) {
+  const galleryPromises = req.files.map(async (file, index) => {
+    const photoMeta = photos_metadata[index] || {};
+    const categories = req.body.categories || [];
 
-    // Simpan foto-foto ke Gallery
-    let photoDetails;
-    
-    // Cek apakah ada data photo details atau tidak
-    if (req.body.photos) {
-      try {
-        photoDetails = JSON.parse(req.body.photos);
-        
-        if (!Array.isArray(photoDetails) || photoDetails.length !== req.files.length) {
-          photoDetails = req.files.map(() => ({ title: "Untitled" }));
-        }
-      } catch (error) {
-        photoDetails = req.files.map(() => ({ title: "Untitled" }));
-      }
-    } else {
-      photoDetails = req.files.map(() => ({ title: "Untitled" }));
-    }
+    try {
+      // Buat foto di Gallery
+      const gallery = await Gallery.create({
+        title: photoMeta.title || "Untitled",
+        description: photoMeta.description || null,
+        image_url: file.path,
+        user_id: album.user_id,
+        album_id: albumId,
+      });
 
-    // Simpan foto-foto ke Gallery
-    const photos = await Promise.all(
-      req.files.map(async (file, index) => {
-        const photoData = photoDetails[index] || { title: "Untitled" };
-        
-        // Buat entry di Gallery
-        const gallery = await Gallery.create({
-          title: photoData.title || "Untitled",
-          description: photoData.description || null,
-          image_url: `uploads/${file.filename}`,
-          user_id: album.user_id,
-          album_id: album.album_id,
+      // Proses kategori seperti di galleryController
+      if (categories.length > 0) {
+        const categoryPromises = categories.map(async (categoryName) => {
+          const [category] = await Category.findOrCreate({
+            where: { name: categoryName.trim() },
+            defaults: {
+              description: `Category for ${categoryName.trim()}`
+            }
+          });
+
+          await GalleryCategory.create({
+            gallery_id: gallery.id,
+            category_id: category.id
+          });
         });
 
-        // Jika ada kategori, proses kategorinya
-        if (photoData.categories && Array.isArray(photoData.categories)) {
-          for (const categoryName of photoData.categories) {
-            let category = await Category.findOne({
-              where: { name: categoryName }
+        await Promise.all(categoryPromises);
+      }
+
+      return gallery;
+    } catch (error) {
+      console.error(`Error processing file ${file.originalname}:`, error);
+      return null;
+    }
+  });
+
+  await Promise.all(galleryPromises);
+}
+    // Handle foto dari galeri dengan kategori
+    let galleryPhotosData = [];
+    if (req.body.gallery_photos) {
+      try {
+        galleryPhotosData = JSON.parse(req.body.gallery_photos);
+
+        for (const galleryPhoto of galleryPhotosData) {
+          const originalGallery = await Gallery.findByPk(
+            galleryPhoto.gallery_id
+          );
+          if (originalGallery) {
+            await originalGallery.update({
+              album_id: albumId,
             });
 
-            if (!category) {
-              category = await Category.create({
-                name: categoryName,
-                description: `Category for ${categoryName}`
-              });
+            // Proses kategori untuk foto galeri
+            if (galleryPhoto.categories && galleryPhoto.categories.length > 0) {
+              for (const categoryName of galleryPhoto.categories) {
+                const [category] = await Category.findOrCreate({
+                  where: { name: categoryName },
+                });
+
+                await GalleryCategory.create({
+                  gallery_id: originalGallery.id,
+                  category_id: category.id,
+                });
+              }
             }
-
-            await GalleryCategory.create({
-              gallery_id: gallery.id,
-              category_id: category.category_id
-            });
           }
         }
+      } catch (error) {
+        console.error("Error processing gallery photos:", error);
+      }
+    }
 
-        return gallery;
-      })
-    );
-
-    // Ambil data album yang diperbarui beserta foto-fotonya
+    // Ambil data album yang diperbarui
     const updatedAlbum = await Album.findByPk(albumId, {
       include: [
         {
           model: Gallery,
           as: "photos",
-          include: [{
-            model: Category,
-            as: "categories",
-            attributes: ["category_id", "name"],
-            through: { attributes: [] }
-          }]
+          include: [
+            {
+              model: Category,
+              as: "categories",
+              through: { attributes: [] },
+            },
+          ],
         },
       ],
     });
@@ -281,7 +351,7 @@ export const addPhotosToAlbum = async (req, res) => {
       data: updatedAlbum,
     });
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error adding photos to album:", error);
     res.status(500).json({
       error: "Terjadi kesalahan saat menambah foto",
       details: error.message,
@@ -293,26 +363,28 @@ export const addPhotosToAlbum = async (req, res) => {
 export const getAllAlbums = async (req, res) => {
   try {
     const albums = await Album.findAll({
-      include: [{ 
-        model: Gallery,
-        as: "photos",
-        attributes: ['id', 'title', 'image_url'] 
-      }]
+      include: [
+        {
+          model: Gallery,
+          as: "photos",
+          attributes: ["id", "title", "image_url"],
+        },
+      ],
     });
-    
+
     if (albums.length === 0) {
       return res.status(200).json({ message: "Belum ada album", data: [] });
     }
-    
+
     res.status(200).json({
       message: "Albums retrieved successfully",
-      data: albums
+      data: albums,
     });
   } catch (error) {
-    console.error('Error in getAllAlbums:', error);
-    res.status(500).json({ 
+    console.error("Error in getAllAlbums:", error);
+    res.status(500).json({
       error: "Terjadi kesalahan saat mengambil data album",
-      details: error.message 
+      details: error.message,
     });
   }
 };
@@ -325,38 +397,40 @@ export const updateAlbum = async (req, res) => {
 
     // Cari album yang akan diupdate
     const album = await Album.findByPk(albumId, {
-      include: [{ 
-        model: Gallery,
-        as: "photos",
-        attributes: ['id', 'title', 'image_url'] 
-      }]
+      include: [
+        {
+          model: Gallery,
+          as: "photos",
+          attributes: ["id", "title", "image_url"],
+        },
+      ],
     });
 
     if (!album) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: "Album tidak ditemukan",
-        error: true 
+        error: true,
       });
     }
 
     // Persiapkan data update untuk album
     const updateData = {};
-    
+
     // Bersihkan dan validasi data album
     if (title !== undefined) {
-      updateData.title = title.replace(/['"\\]/g, '').trim();
+      updateData.title = title.replace(/['"\\]/g, "").trim();
     }
-    
+
     if (description !== undefined) {
-      updateData.description = description.replace(/['"\\]/g, '').trim();
+      updateData.description = description.replace(/['"\\]/g, "").trim();
     }
-    
+
     if (user_id !== undefined) {
       const userExists = await User.findByPk(user_id);
       if (!userExists) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           message: "User tidak ditemukan",
-          error: true 
+          error: true,
         });
       }
       updateData.user_id = parseInt(user_id, 10);
@@ -372,14 +446,14 @@ export const updateAlbum = async (req, res) => {
           // Update foto yang sudah ada
           await Gallery.update(
             {
-              title: photo.title?.replace(/['"\\]/g, '').trim(),
-              description: photo.description?.replace(/['"\\]/g, '').trim()
+              title: photo.title?.replace(/['"\\]/g, "").trim(),
+              description: photo.description?.replace(/['"\\]/g, "").trim(),
             },
             {
               where: {
                 id: photo.id,
-                album_id: albumId
-              }
+                album_id: albumId,
+              },
             }
           );
         }
@@ -388,27 +462,27 @@ export const updateAlbum = async (req, res) => {
 
     // Ambil data terbaru setelah update
     const updatedAlbum = await Album.findByPk(albumId, {
-      include: [{ 
-        model: Gallery,
-        as: "photos",
-        attributes: ['id', 'title', 'image_url', 'description'] 
-      }]
+      include: [
+        {
+          model: Gallery,
+          as: "photos",
+          attributes: ["id", "title", "image_url", "description"],
+        },
+      ],
     });
 
     res.status(200).json({
-      message: "Album berhasil diperbarui",
-      data: updatedAlbum
+      message: "Foto berhasil ditambahkan ke album",
+      data: updatedAlbum,
     });
-
   } catch (error) {
-    console.error('Error updating album:', error);
-    res.status(500).json({ 
-      message: "Terjadi kesalahan saat memperbarui album",
-      error: true,
-      details: error.message 
+    console.error("Error adding photos to album:", error);
+    res.status(500).json({
+      error: "Terjadi kesalahan saat menambah foto",
+      details: error.message,
     });
   }
-}
+};
 
 // Menghapus album
 export const deleteAlbum = async (req, res) => {

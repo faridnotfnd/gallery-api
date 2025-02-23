@@ -9,6 +9,7 @@ import albumRoutes from "./routes/albumRoutes.js";
 import likeRoutes from './routes/likeRoutes.js'; // Impor likeRoutes
 import adminRoutes from './routes/adminRoutes.js';
 import dotenv from 'dotenv';
+import { imageCacheMiddleware } from "./middleware/imageCache.js";
 
 
 // Memuat variabel lingkungan
@@ -25,7 +26,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Menyediakan folder 'uploads' untuk file gambar
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', imageCacheMiddleware, express.static('uploads'));
 
 app.use('/admin', adminRoutes);
 
