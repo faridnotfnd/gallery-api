@@ -101,12 +101,11 @@ export const createGallery = async (req, res) => {
       message: "Gallery created successfully",
       gallery: galleryWithCategories,
     });
-
   } catch (error) {
     console.error("Error in createGallery:", error);
-    return res.status(400).json({ 
-      message: "Error creating gallery", 
-      error: error.message 
+    return res.status(400).json({
+      message: "Error creating gallery",
+      error: error.message,
     });
   }
 };
@@ -114,7 +113,6 @@ export const createGallery = async (req, res) => {
 export const getAllGalleries = async (req, res) => {
   try {
     let { page, limit } = req.query;
-    // Pastikan page dan limit adalah angka valid
     page = Math.max(1, parseInt(page) || 1);
     limit = Math.min(50, Math.max(1, parseInt(limit) || 15));
 
@@ -129,20 +127,23 @@ export const getAllGalleries = async (req, res) => {
           model: Category,
           as: "categories",
           attributes: ["category_id", "name"],
-          through: { attributes: [] }, // Tambahkan ini
+          through: { attributes: [] },
         },
       ],
+      distinct: true,
     });
 
-    const result = {
+    const totalPages = Math.ceil(count / limit);
+    const hasMore = page < totalPages;
+
+    return res.status(200).json({
       galleries: rows,
       total: count,
       currentPage: page,
-      totalPages: Math.ceil(count / limit),
-      itemsPerPage: limit,
-    };
-
-    return res.status(200).json(result);
+      totalPages,
+      limit,
+      hasMore
+    });
 
   } catch (error) {
     console.error("Error in getAllGalleries:", error);
@@ -152,7 +153,6 @@ export const getAllGalleries = async (req, res) => {
     });
   }
 };
-
 export const getGalleries = async (req, res) => {
   try {
     const galleries = await Gallery.findAll({
@@ -167,7 +167,7 @@ export const getGalleries = async (req, res) => {
 // Get Single Gallery
 export const getGallery = async (req, res) => {
   try {
-    const cacheKey = `gallery_${req.params.id}`; // Definisikan cacheKey
+    const cacheKey = `gallery_${req.params.id}`;
 
     const cachedGallery = cache.get(cacheKey);
     if (cachedGallery) {
@@ -190,25 +190,32 @@ export const getGallery = async (req, res) => {
       return res.status(404).json({ message: "Gallery not found" });
     }
 
-    const galleryWithUser = {
+    // Buat objek plain yang aman untuk di-cache
+    const galleryData = {
       id: gallery.id,
       title: gallery.title,
       description: gallery.description,
       image_url: gallery.image_url,
-      user_id: gallery.User ? gallery.User.id : null,
-      username: gallery.User ? gallery.User.username : null,
-      categories: gallery.categories || [],
+      user_id: gallery.User?.id,
+      username: gallery.User?.username,
+      categories:
+        gallery.categories?.map((cat) => ({
+          category_id: cat.category_id,
+          name: cat.name,
+        })) || [],
       createdAt: gallery.createdAt,
       updatedAt: gallery.updatedAt,
     };
 
-    // Sekarang menggunakan galleryWithUser yang sudah didefinisikan
-    cache.set(cacheKey, galleryWithUser);
+    // Cache data yang sudah di-sanitize
+    cache.set(cacheKey, galleryData);
 
-    res.status(200).json(galleryWithUser);
+    res.status(200).json(galleryData);
   } catch (error) {
     console.error("Error in getGallery:", error);
-    res.status(500).json({ message: "Error fetching gallery", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching gallery", error: error.message });
   }
 };
 
